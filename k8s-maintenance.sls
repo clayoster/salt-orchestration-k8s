@@ -70,13 +70,11 @@ check_controlplane_pings:
     - require:
       - salt: {{ minion }}_upgrade_packages
 
-# Define a list for use in wait_for_event
-{% set minion_reboot = [minion] %}
-
 {{ minion }}_wait_for_online:
   salt.wait_for_event:
     - name: salt/minion/*/start
-    - id_list: {{ minion_reboot }}
+    # This state expects a list of minions, but we just want to watch for one
+    - id_list: ['{{ minion }}']
     - timeout: 900  # wait up to 15 minutes
     - require:
       - salt: {{ minion }}_reboot
