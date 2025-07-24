@@ -39,7 +39,7 @@ check_controlplane_pings:
   salt.function:
     - name: cmd.run
     # Target at the first control plane node
-    - tgt: {{ reboot_list[0] }}
+    - tgt: {{ controlplane_nodes[0] }}
     - arg:
         - /usr/local/sbin/k8s-mgmt -n {{ minion }} -t drain
     {% if minion in controlplane_nodes %}
@@ -85,7 +85,7 @@ check_controlplane_pings:
   salt.function:
     - name: cmd.run
     # Target at the first control plane node
-    - tgt: {{ reboot_list[0] }}
+    - tgt: {{ controlplane_nodes[0] }}
     - arg:
         - /usr/local/sbin/k8s-mgmt -n {{ minion }} -t uncordon
     {% if minion in controlplane_nodes %}
