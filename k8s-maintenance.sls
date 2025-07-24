@@ -91,7 +91,7 @@ check_controlplane_pings:
     - failhard: True
     {% endif %}
     - require:
-      - {{ minion }}_upgrade_packages
+      - salt: {{ minion }}_wait_for_online
 
 # wait for the node to settle before moving on
 {{ minion }}_wait:
