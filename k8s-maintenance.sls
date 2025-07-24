@@ -63,7 +63,6 @@ check_controlplane_pings:
     - name: cmd.run
     - tgt: {{ minion }}
     - arg:
-        #- 'sleep 3s && shutdown -r -t 0'
         - 'sleep 3s && reboot'
     - kwarg:
         bg: True
@@ -84,8 +83,9 @@ check_controlplane_pings:
     - name: cmd.run
     # Target at the first control plane node
     - tgt: {{ controlplane_nodes[0] }}
+    # Add a grace period before uncordoning the node
     - arg:
-        - /usr/local/sbin/k8s-mgmt -n {{ minion }} -t uncordon
+        - sleep 10 && /usr/local/sbin/k8s-mgmt -n {{ minion }} -t uncordon
     {% if minion in controlplane_nodes %}
     # If the minion is critical (control plane) fail hard if the minion is not online
     - failhard: True
