@@ -1,0 +1,169 @@
+#!/bin/bash
+
+if [[ -f '/usr/bin/kubectl' ]]; then
+    echo "-- Node is running k8s --"
+    kubecmd="/usr/bin/kubectl"
+    kubeconfig="/etc/kubernetes/admin.conf"
+elif [[ -f '/var/lib/rancher/rke2/bin/kubectl' ]]; then
+    echo "-- Node is running RKE2 --"
+    kubecmd="/var/lib/rancher/rke2/bin/kubectl"
+    kubeconfig="/etc/rancher/rke2/rke2.yaml"
+else
+    echo "-- Unable to determine kubernetes type --"
+    exit 1
+fi
+
+# Display the help text
+show_help() {
+cat <<HELP
+Usage: k8s-mgmt [option]
+
+Options:
+  -h    Show this help text
+  -n    Set the node to interact with
+  -t    Set the workflow type (cordon | drain | uncordon)
+
+HELP
+}
+
+# Read in arguments to set API options
+while getopts "hn:t:" option; do
+    case "$option" in
+        h) show_help;;
+        n) node_name="$OPTARG" ;;
+        t) workflow_type="$OPTARG" ;;
+        *) show_help;;
+    esac
+done
+
+main() {
+    if [[ "$workflow_type" == 'cordon' ]]; then
+        cordon_workflow
+    elif [[ "$workflow_type" == 'drain' ]]; then
+        drain_workflow
+    elif [[ "$workflow_type" == 'uncordon' ]]; then
+        uncordon_workflow
+    else
+        echo "-- Incorrect workflow type specified --"
+        exit 1
+    fi
+}
+
+cordon_workflow() {
+    # Verify there are no control plane nodes in a NotReady or Unknown state
+    if $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(control-plane|etcd|master)' | grep -i -E '(NotReady|Unknown)'; then
+        echo "-- One more nodes is in a NotReady or Unknown state. Exiting script --"
+        exit 1
+    else
+        echo "-- All nodes are in a Ready state, proceeding --"
+    fi
+
+    # Cordon node
+    $kubecmd --kubeconfig=$kubeconfig cordon $node_name
+    sleep 2
+
+    # Wait for node to be cordoned
+    for i in {1..20}; do
+        node_cordon=""
+        node_cordon="$($kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}')"
+        if [[ "${node_cordon,,}" == 'true' ]]; then
+            break
+        fi
+
+        # Wait a little more time
+        sleep 10
+    done
+    
+    # Verify the node was cordoned
+    if [[ "${node_cordon,,}" == 'true' ]]; then
+        echo "-- Node $node_name cordoned successfully --"
+        exit 0
+    else
+        echo "-- Node $node_name did not cordon successfully --"
+        exit 1
+    fi
+}
+
+drain_workflow() {
+    # Verify there are no nodes in a NotReady or Unknown state
+    if $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(NotReady|Unknown)'; then
+        echo "-- One more nodes is in a NotReady or Unknown state. Exiting script --"
+        exit 1
+    else
+        echo "-- All nodes are in a Ready state, proceeding --"
+    fi
+
+    # Drain and cordon node (drain does both)
+    $kubecmd --kubeconfig=$kubeconfig drain $node_name --ignore-daemonsets --delete-emptydir-data
+    sleep 2
+
+    # Wait for node to be cordoned
+    for i in {1..20}; do
+        node_cordon=""
+        node_cordon="$($kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}')"
+        if [[ "${node_cordon,,}" == 'true' ]]; then
+            break
+        fi
+
+        # Wait a little more time
+        sleep 10
+    done
+    
+    # Verify the node was cordoned
+    if [[ "${node_cordon,,}" == 'true' ]]; then
+        echo "-- Node $node_name drained and cordoned successfully --"
+        exit 0
+    else
+        echo "-- Node $node_name did not drain and cordon successfully --"
+        exit 1
+    fi
+}
+
+uncordon_workflow() {
+    # Verify that the node is ready (Ready when response is True)
+    for i in {1..20}; do
+        node_status=""
+        node_status="$($kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
+        if [[ "${node_status,,}" == 'true' ]]; then
+            break
+        fi
+
+        # Wait a little more time
+        sleep 10
+    done
+
+    # Verify the node became ready
+    if [[ "${node_status,,}" == 'true' ]]; then
+        echo "-- Node $node_name is ready --"
+    else
+        echo "-- Node $node_name did not become ready in time --"
+        exit 1
+    fi
+
+    # Uncordon the node
+    $kubecmd --kubeconfig=$kubeconfig uncordon $node_name
+    sleep 2
+
+    # Verify the node was uncordoned
+    for i in {1..20}; do
+        node_cordon=""
+        node_cordon="$($kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}')"
+        if [[ "${node_cordon,,}" != 'true' ]]; then
+            break
+        fi
+
+        # Wait a little more time
+        sleep 10
+    done
+
+    # Verify the node was uncordoned
+    if [[ "${node_cordon,,}" != 'true' ]]; then
+        echo "-- Node $node_name uncordoned successfully --"
+        exit 0
+    else
+        echo "-- Node $node_name did not uncordon successfully --"
+        exit 1
+    fi
+}
+
+main
