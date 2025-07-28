@@ -1,3 +1,4 @@
+# Define lists of control plane and worker nodes
 {% set controlplane_nodes = [
     "kube-cp1.test.com",
     "kube-cp2.test.com",
@@ -10,6 +11,11 @@
     "kube-worker3.test.com"
     ] %}
 
+# Alternatively, these lists can be defined in pillar
+{# set controlplane_nodes = salt['pillar.get']('k8s:controlplane_nodes') #}
+{# set worker_nodes = salt['pillar.get']('k8s:worker_nodes') #}
+
+# Define an upgrade_list that includes the control plane nodes first, then the worker nodes
 {% set upgrade_list = controlplane_nodes + worker_nodes %}
 
 # Verify control plane nodes are up. Fail hard if any of these do not respond
@@ -21,7 +27,8 @@ check_controlplane_pings:
     - failhard: True
     - expect_minions: True
 
-# Run the orchestration state for every minion in the upgrade_list
+# Run the orchestration state for every minion in the upgrade_list. Executed sequentially
+# and beginning with the control plane nodes.
 {% for minion in upgrade_list %}
 {{ minion }}_maintenance:
   salt.runner:
@@ -31,7 +38,7 @@ check_controlplane_pings:
         minion: {{ minion }}
         controlplane_nodes: {{ controlplane_nodes }}
     {% if minion in controlplane_nodes %}
-    # If the minion is critical (control plane) fail hard if the minion is not online
+    # If the minion is a control plane node, fail hard if this state is not successful
     - failhard: True
     {% endif %}
     - require:

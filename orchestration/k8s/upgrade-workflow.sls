@@ -1,16 +1,18 @@
+# Retrieve variables passed to this orchestration state from orchestration.k8s-upgrade-cluster
 {% set minion = salt['pillar.get']('minion') %}
 {% set controlplane_nodes = salt['pillar.get']('controlplane_nodes') %}
 
+# Verify that the minion is responding before continuing
 {{ minion }}_check_minion_pings:
   salt.function:
     - name: test.ping
     - tgt: {{ minion }}
-    #- tgt_type: list
     {% if minion in controlplane_nodes %}
-    # If the minion is critical (control plane) fail hard if the minion is not online
+    # If the minion is a control plane node, fail hard if this state is not successful
     - failhard: True
     {% endif %}
 
+# Drain and cordon the node using the k8s-mgmt script on the first control plane node
 {{ minion }}_k8s_prep_reboot:
   salt.function:
     - name: cmd.run
@@ -19,12 +21,13 @@
     - arg:
         - /usr/local/sbin/k8s-mgmt -n {{ minion }} -t drain
     {% if minion in controlplane_nodes %}
-    # If the minion is critical (control plane) fail hard if the minion is not online
+    # If the minion is a control plane node, fail hard if this state is not successful
     - failhard: True
     {% endif %}
     - require:
       - salt: {{ minion }}_check_minion_pings
 
+# Install all available package updates
 {{ minion }}_upgrade_packages:
   salt.function:
     - name: pkg.upgrade
@@ -34,6 +37,7 @@
     - require:
       - {{ minion }}_k8s_prep_reboot
 
+# Initiate a reboot
 {{ minion }}_reboot:
   salt.function:
     - name: cmd.run
@@ -45,6 +49,7 @@
     - require:
       - salt: {{ minion }}_upgrade_packages
 
+# Wait for the minion to start responding to Salt again
 {{ minion }}_wait_for_online:
   salt.wait_for_event:
     - name: salt/minion/*/start
@@ -54,22 +59,23 @@
     - require:
       - salt: {{ minion }}_reboot
 
+# Uncordon the node
 {{ minion }}_k8s_prep_startup:
   salt.function:
     - name: cmd.run
     # Target at the first control plane node
     - tgt: {{ controlplane_nodes[0] }}
-    # Add a grace period before uncordoning the node
+    # Add a grace period of 10 seconds before uncordoning the node
     - arg:
         - sleep 10 && /usr/local/sbin/k8s-mgmt -n {{ minion }} -t uncordon
     {% if minion in controlplane_nodes %}
-    # If the minion is critical (control plane) fail hard if the minion is not online
+    # If the minion is a control plane node, fail hard if this state is not successful
     - failhard: True
     {% endif %}
     - require:
       - salt: {{ minion }}_wait_for_online
 
-# wait for the node to settle before moving on
+# Wait for the node to settle before moving on
 {{ minion }}_wait:
   salt.function:
     - name: test.sleep
