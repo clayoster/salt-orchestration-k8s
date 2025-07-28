@@ -1,27 +1,5 @@
-{% set controlplane_nodes = [
-    "kube-cp1.test.com",
-    "kube-cp2.test.com",
-    "kube-cp3.test.com"
-    ] %}
-
-{% set worker_nodes = [
-    "kube-worker1.test.com",
-    "kube-worker2.test.com",
-    "kube-worker3.test.com"
-    ] %}
-
-{% set reboot_list = controlplane_nodes + worker_nodes %}
-
-# Verify control plane nodes are up. Fail hard if any of these do not respond
-check_controlplane_pings:
-  salt.function:
-    - name: test.ping
-    - tgt: {{ controlplane_nodes }}
-    - tgt_type: list
-    - failhard: True
-    - expect_minions: True
-
-{% for minion in reboot_list %}
+{% set minion = salt['pillar.get']('minion') %}
+{% set controlplane_nodes = salt['pillar.get']('controlplane_nodes') %}
 
 {{ minion }}_check_minion_pings:
   salt.function:
@@ -32,8 +10,6 @@ check_controlplane_pings:
     # If the minion is critical (control plane) fail hard if the minion is not online
     - failhard: True
     {% endif %}
-    - require:
-      - salt: check_controlplane_pings
 
 {{ minion }}_k8s_prep_reboot:
   salt.function:
@@ -107,5 +83,3 @@ check_controlplane_pings:
         {% endif %}
     - require:
       - {{ minion }}_k8s_prep_startup
-
-{% endfor %}
