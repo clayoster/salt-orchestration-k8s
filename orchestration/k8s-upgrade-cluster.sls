@@ -10,7 +10,7 @@
     "kube-worker3.test.com"
     ] %}
 
-{% set reboot_list = controlplane_nodes + worker_nodes %}
+{% set upgrade_list = controlplane_nodes + worker_nodes %}
 
 # Verify control plane nodes are up. Fail hard if any of these do not respond
 check_controlplane_pings:
@@ -21,8 +21,8 @@ check_controlplane_pings:
     - failhard: True
     - expect_minions: True
 
-# Run the orchestration state for every minion in the reboot_list
-{% for minion in reboot_list %}
+# Run the orchestration state for every minion in the upgrade_list
+{% for minion in upgrade_list %}
 {{ minion }}_maintenance:
   salt.runner:
     - name: state.orchestrate
