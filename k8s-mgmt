@@ -38,8 +38,10 @@ done
 
 main() {
     if [[ "$workflow_type" == 'cordon' ]]; then
+        verify_controlplane_nodes
         cordon_workflow
     elif [[ "$workflow_type" == 'drain' ]]; then
+        verify_controlplane_nodes
         drain_workflow
     elif [[ "$workflow_type" == 'uncordon' ]]; then
         uncordon_workflow
@@ -49,7 +51,7 @@ main() {
     fi
 }
 
-cordon_workflow() {
+verify_controlplane_nodes() {
     # Verify there are no control plane nodes in a NotReady or Unknown state
     if $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(control-plane|etcd|master)' | grep -i -E '(NotReady|Unknown)'; then
         echo "-- One more nodes is in a NotReady or Unknown state. Exiting script --"
@@ -57,7 +59,9 @@ cordon_workflow() {
     else
         echo "-- All nodes are in a Ready state, proceeding --"
     fi
+}
 
+cordon_workflow() {
     # Cordon node
     $kubecmd --kubeconfig=$kubeconfig cordon $node_name
     sleep 2
@@ -85,14 +89,6 @@ cordon_workflow() {
 }
 
 drain_workflow() {
-    # Verify there are no nodes in a NotReady or Unknown state
-    if $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(NotReady|Unknown)'; then
-        echo "-- One more nodes is in a NotReady or Unknown state. Exiting script --"
-        exit 1
-    else
-        echo "-- All nodes are in a Ready state, proceeding --"
-    fi
-
     # Drain and cordon node (drain does both)
     $kubecmd --kubeconfig=$kubeconfig drain $node_name --ignore-daemonsets --delete-emptydir-data
     sleep 2
