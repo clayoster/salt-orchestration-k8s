@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Determine the type of Kubernetes that is being used
 if [[ -f '/usr/bin/kubectl' ]]; then
     echo "-- Node is running k8s --"
     kubecmd="/usr/bin/kubectl"
@@ -9,7 +10,7 @@ elif [[ -f '/var/lib/rancher/rke2/bin/kubectl' ]]; then
     kubecmd="/var/lib/rancher/rke2/bin/kubectl"
     kubeconfig="/etc/rancher/rke2/rke2.yaml"
 else
-    echo "-- Unable to determine kubernetes type --"
+    echo "-- Unable to determine Kubernetes type --"
     exit 1
 fi
 
