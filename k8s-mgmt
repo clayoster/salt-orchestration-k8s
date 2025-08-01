@@ -38,6 +38,8 @@ while getopts "hn:t:" option; do
 done
 
 main() {
+    verify_node
+
     if [[ "$workflow_type" == 'cordon' ]]; then
         verify_controlplane_nodes
         cordon_workflow
@@ -49,6 +51,16 @@ main() {
     else
         echo "-- Incorrect workflow type specified --"
         exit 1
+    fi
+}
+
+verify_node() {
+    # Verify that the node exists before continuing
+    if ! $kubecmd --kubeconfig=$kubeconfig get node $node_name >/dev/null; then
+        echo "-- The node $node_name was not found in the cluster. Exiting script --"
+        exit 1
+    else
+        echo "-- Node $node_name was found, proceeding --"
     fi
 }
 
