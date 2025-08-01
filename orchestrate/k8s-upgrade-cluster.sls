@@ -19,6 +19,10 @@
 # If the k8s node names are the hostname and the minions are a fqdn, set to False
 {% set minion_k8s_names_match = True %}
 
+# Allow reboot to be skipped by passing this to the orchestration state:
+#   pillar='{"skip_reboot": True}'
+{% set skip_reboot = salt['pillar.get']('skip_reboot', False) %}
+
 # Define an upgrade_list that includes the control plane nodes first, then the worker nodes
 {% set upgrade_list = controlplane_nodes + worker_nodes %}
 
@@ -50,6 +54,7 @@ check_controlplane_pings:
         minion: {{ minion }}
         k8s_node_name: {{ k8s_node_name }}
         controlplane_nodes: {{ controlplane_nodes }}
+        skip_reboot: {{ skip_reboot }}
     {% if minion in controlplane_nodes %}
     # If the minion is a control plane node, fail hard if this state is not successful
     - failhard: True

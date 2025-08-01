@@ -2,6 +2,7 @@
 {% set minion = salt['pillar.get']('minion') %}
 {% set k8s_node_name = salt['pillar.get']('k8s_node_name') %}
 {% set controlplane_nodes = salt['pillar.get']('controlplane_nodes') %}
+{% set skip_reboot = salt['pillar.get']('skip_reboot') %}
 
 # Verify that the minion is responding before continuing
 {{ minion }}_check_minion_pings:
@@ -38,6 +39,7 @@
     - require:
       - {{ minion }}_k8s_prep_reboot
 
+{% if not skip_reboot %}
 # Initiate a reboot
 {{ minion }}_reboot:
   salt.function:
@@ -59,6 +61,7 @@
     - timeout: 900  # wait up to 15 minutes
     - require:
       - salt: {{ minion }}_reboot
+{% endif %}
 
 # Uncordon the node
 {{ minion }}_k8s_prep_startup:
@@ -74,7 +77,11 @@
     - failhard: True
     {% endif %}
     - require:
+      {% if not skip_reboot %}
       - salt: {{ minion }}_wait_for_online
+      {% else %}
+      - salt: {{ minion }}_upgrade_packages
+      {% endif %}
 
 # Wait for the node to settle before moving on
 {{ minion }}_wait:
