@@ -15,6 +15,10 @@
 {# set controlplane_nodes = salt['pillar.get']('k8s:controlplane_nodes') #}
 {# set worker_nodes = salt['pillar.get']('k8s:worker_nodes') #}
 
+# If the k8s node names match the minion name, leave this as is.
+# If the k8s node names are the hostname and the minions are a fqdn, set to False
+{% set minion_k8s_names_match = True %}
+
 # Define an upgrade_list that includes the control plane nodes first, then the worker nodes
 {% set upgrade_list = controlplane_nodes + worker_nodes %}
 
@@ -30,12 +34,21 @@ check_controlplane_pings:
 # Run the orchestration state for every minion in the upgrade_list. Executed sequentially
 # and beginning with the control plane nodes.
 {% for minion in upgrade_list %}
+# set the k8s_node_name variable
+{% if minion_k8s_names_match %}
+{% set k8s_node_name = minion %}
+{% else %}
+{% set k8s_node_name = minion.split('.')[0] %}
+{% endif %}
+
+# Call the upgrade-workflow orchestration state
 {{ minion }}_maintenance:
   salt.runner:
     - name: state.orchestrate
     - mods: orchestrate.k8s.upgrade-workflow
     - pillar:
         minion: {{ minion }}
+        k8s_node_name: {{ k8s_node_name }}
         controlplane_nodes: {{ controlplane_nodes }}
     {% if minion in controlplane_nodes %}
     # If the minion is a control plane node, fail hard if this state is not successful
