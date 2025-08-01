@@ -15,7 +15,7 @@
     {% endif %}
 
 # Drain and cordon the node using the k8s-mgmt script on the first control plane node
-{{ minion }}_k8s_prep_reboot:
+{{ minion }}_k8s_prep_maintenance:
   salt.function:
     - name: cmd.run
     # Target at the first control plane node
@@ -37,7 +37,7 @@
     - kwarg:
         refresh: True
     - require:
-      - {{ minion }}_k8s_prep_reboot
+      - {{ minion }}_k8s_prep_maintenance
 
 {% if not skip_reboot %}
 # Initiate a reboot
