@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Determine the type of Kubernetes that is being used
+# Determine the type of Kubernetes that is being used and set variables
 if [[ -f '/usr/bin/kubectl' ]]; then
     echo "-- Node is running k8s --"
     kubecmd="/usr/bin/kubectl"
@@ -38,139 +38,152 @@ while getopts "hn:t:" option; do
 done
 
 main() {
-    verify_node
+    # Mandatory checks
+    check_status "verify_api_connectivity"
+    check_status "verify_controlplane"
+    verify_node_exists
 
+    # Execute workflow specified by -t argument
     if [[ "$workflow_type" == 'cordon' ]]; then
-        verify_controlplane_nodes
         cordon_workflow
     elif [[ "$workflow_type" == 'drain' ]]; then
-        verify_controlplane_nodes
         drain_workflow
     elif [[ "$workflow_type" == 'uncordon' ]]; then
         uncordon_workflow
     else
-        echo "-- Incorrect workflow type specified --"
+        echo "-- Incorrect workflow type $workflow_type specified. Exiting script --"
         exit 1
     fi
+
 }
 
-verify_node() {
-    # Verify that the node exists before continuing
+verify_node_exists() {
+    # Verify that the $node_name exists in the cluster
     if ! $kubecmd --kubeconfig=$kubeconfig get node $node_name >/dev/null; then
-        echo "-- The node $node_name was not found in the cluster. Exiting script --"
+        echo "The node $node_name was not found in the cluster. Exiting script"
         exit 1
-    else
-        echo "-- Node $node_name was found, proceeding --"
-    fi
-}
-
-verify_controlplane_nodes() {
-    # Verify there are no control plane nodes in a NotReady or Unknown state
-    if $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(control-plane|etcd|master)' | grep -i -E '(NotReady|Unknown)'; then
-        echo "-- One more nodes is in a NotReady or Unknown state. Exiting script --"
-        exit 1
-    else
-        echo "-- All nodes are in a Ready state, proceeding --"
     fi
 }
 
 cordon_workflow() {
-    # Cordon node
+    # Cordon the node
     $kubecmd --kubeconfig=$kubeconfig cordon $node_name
     sleep 2
 
     # Wait for node to be cordoned
-    for i in {1..20}; do
-        node_cordon=""
-        node_cordon="$($kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}')"
-        if [[ "${node_cordon,,}" == 'true' ]]; then
-            break
-        fi
-
-        # Wait a little more time
-        sleep 10
-    done
-    
-    # Verify the node was cordoned
-    if [[ "${node_cordon,,}" == 'true' ]]; then
-        echo "-- Node $node_name cordoned successfully --"
-        exit 0
-    else
-        echo "-- Node $node_name did not cordon successfully --"
-        exit 1
-    fi
+    check_status "cordon"
 }
 
 drain_workflow() {
-    # Drain and cordon node (drain does both)
+    # Drain and cordon the node (drain does both)
     $kubecmd --kubeconfig=$kubeconfig drain $node_name --ignore-daemonsets --delete-emptydir-data
     sleep 2
 
     # Wait for node to be cordoned
-    for i in {1..20}; do
-        node_cordon=""
-        node_cordon="$($kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}')"
-        if [[ "${node_cordon,,}" == 'true' ]]; then
-            break
-        fi
-
-        # Wait a little more time
-        sleep 10
-    done
-    
-    # Verify the node was cordoned
-    if [[ "${node_cordon,,}" == 'true' ]]; then
-        echo "-- Node $node_name drained and cordoned successfully --"
-        exit 0
-    else
-        echo "-- Node $node_name did not drain and cordon successfully --"
-        exit 1
-    fi
+    check_status "drain"
 }
 
 uncordon_workflow() {
-    # Verify that the node is ready (Ready when response is True)
-    for i in {1..20}; do
-        node_status=""
-        node_status="$($kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
-        if [[ "${node_status,,}" == 'true' ]]; then
-            break
-        fi
-
-        # Wait a little more time
-        sleep 10
-    done
-
-    # Verify the node became ready
-    if [[ "${node_status,,}" == 'true' ]]; then
-        echo "-- Node $node_name is ready --"
-    else
-        echo "-- Node $node_name did not become ready in time --"
-        exit 1
-    fi
+    # Verify that the node is ready
+    check_status "verify_node_ready"
 
     # Uncordon the node
     $kubecmd --kubeconfig=$kubeconfig uncordon $node_name
     sleep 2
 
     # Verify the node was uncordoned
+    check_status "uncordon"
+}
+
+check_status() {
+    # Determine workflow test based on first argument
+    workflow_test="$1"
+
+    ##
+    # Define variables for the various checks
+    ##
+
+    # verify_api_connectivity
+    if [[ "$workflow_test" == 'verify_api_connectivity' ]]; then
+        check_command="$kubecmd --kubeconfig=$kubeconfig get nodes | grep 'control-plane' >/dev/null"
+        test_type="errorlevel"
+        success_message="The Kubernetes API is reachable, proceeding"
+        fail_message="The Kuberetes API is unreachable. Exiting script"
+    # verify_node_ready
+    elif [[ "$workflow_test" == 'verify_node_ready' ]]; then
+        check_command="! $kubecmd --kubeconfig=$kubeconfig get node $node_name | grep -i -E '(NotReady|Unknown)'"
+        test_type="errorlevel"
+        desired_result="true"
+        success_message="Node $node_name is ready"
+        fail_message="Node $node_name did not become ready in time"
+    # verify_controlplane
+    elif [[ "$workflow_test" == 'verify_controlplane' ]]; then
+        check_command="! $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(control-plane|etcd|master)' | grep -i -E '(NotReady|Unknown)'"
+        test_type="errorlevel"
+        success_message="All control plane nodes are in a Ready state, proceeding"
+        fail_message="One more control plane nodes is in a NotReady or Unknown state. Exiting script"
+    # cordon
+    elif [[ "$workflow_test" == 'cordon' ]]; then
+        check_command="$kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}'"
+        test_type="output"
+        desired_result="true"
+        success_message="Node $node_name cordoned successfully"
+        fail_message="Node $node_name did not cordon successfully"
+    # drain
+    elif [[ "$workflow_test" == 'drain' ]]; then
+        check_command="$kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}'"
+        test_type="output"
+        desired_result="true"
+        success_message="Node $node_name drained and cordoned successfully"
+        fail_message="Node $node_name did not drain and cordon successfully"
+    # uncordon
+    elif [[ "$workflow_test" == 'uncordon' ]]; then
+        check_command="$kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}'"
+        test_type="output"
+        # Empty on purpose
+        desired_result=""
+        success_message="Node $node_name uncordoned successfully"
+        fail_message="Node $node_name did not uncordon successfully"
+    else
+        echo "-- Incorrect workflow test $workflow_test specified. Exiting script --"
+        exit 1
+    fi
+
+    # Default test_success to 0
+    test_success="0"
+
     for i in {1..20}; do
-        node_cordon=""
-        node_cordon="$($kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}')"
-        if [[ "${node_cordon,,}" != 'true' ]]; then
-            break
+        #echo "check_command: $check_command"
+        if [[ "$test_type" == 'errorlevel' ]]; then
+            if eval "$check_command"; then
+                # If the command succeeded, set success to 1 and exit the loop
+                test_success="1"
+                break
+            fi
+        
+        elif [[ "$test_type" == 'output' ]]; then
+            command_result=""
+            command_result="$(eval $check_command)"
+            if [[ "$?" == 0 && "${command_result,,}" == "$desired_result" ]]; then
+                # If the command succeeded and the desired result was achieved, set success to 1 and exit the loop
+                test_success="1"
+                break
+            fi
+
+        else
+            echo "-- Undetermined test_type of $test_type. Exiting script --"
+            exit 1
         fi
 
         # Wait a little more time
         sleep 10
     done
-
-    # Verify the node was uncordoned
-    if [[ "${node_cordon,,}" != 'true' ]]; then
-        echo "-- Node $node_name uncordoned successfully --"
-        exit 0
+    
+    # Print the appropriate message for the check and exit with errorlevel 1 on failure
+    if [[ "$test_success" == 1 ]]; then
+        echo "-- $success_message --"
     else
-        echo "-- Node $node_name did not uncordon successfully --"
+        echo "-- $fail_message --"
         exit 1
     fi
 }
