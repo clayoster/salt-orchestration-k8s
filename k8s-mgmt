@@ -103,51 +103,57 @@ check_status() {
     # Define variables for the various checks
     ##
 
-    # verify_api_connectivity
-    if [[ "$workflow_test" == 'verify_api_connectivity' ]]; then
-        check_command="$kubecmd --kubeconfig=$kubeconfig get nodes | grep 'control-plane' >/dev/null"
-        test_type="errorlevel"
-        success_message="The Kubernetes API is reachable, proceeding"
-        fail_message="The Kuberetes API is unreachable. Exiting script"
-    # verify_node_ready
-    elif [[ "$workflow_test" == 'verify_node_ready' ]]; then
-        check_command="! $kubecmd --kubeconfig=$kubeconfig get node $node_name | grep -i -E '(NotReady|Unknown)'"
-        test_type="errorlevel"
-        desired_result="true"
-        success_message="Node $node_name is ready"
-        fail_message="Node $node_name did not become ready in time"
-    # verify_controlplane
-    elif [[ "$workflow_test" == 'verify_controlplane' ]]; then
-        check_command="! $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(control-plane|etcd|master)' | grep -i -E '(NotReady|Unknown)'"
-        test_type="errorlevel"
-        success_message="All control plane nodes are in a Ready state, proceeding"
-        fail_message="One more control plane nodes is in a NotReady or Unknown state. Exiting script"
-    # cordon
-    elif [[ "$workflow_test" == 'cordon' ]]; then
-        check_command="$kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}'"
-        test_type="output"
-        desired_result="true"
-        success_message="Node $node_name cordoned successfully"
-        fail_message="Node $node_name did not cordon successfully"
-    # drain
-    elif [[ "$workflow_test" == 'drain' ]]; then
-        check_command="$kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}'"
-        test_type="output"
-        desired_result="true"
-        success_message="Node $node_name drained and cordoned successfully"
-        fail_message="Node $node_name did not drain and cordon successfully"
-    # uncordon
-    elif [[ "$workflow_test" == 'uncordon' ]]; then
-        check_command="$kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}'"
-        test_type="output"
-        # Empty on purpose
-        desired_result=""
-        success_message="Node $node_name uncordoned successfully"
-        fail_message="Node $node_name did not uncordon successfully"
-    else
-        echo "-- Incorrect workflow test $workflow_test specified. Exiting script --"
-        exit 1
-    fi
+    case "$workflow_test" in
+        verify_api_connectivity)
+            check_command="$kubecmd --kubeconfig=$kubeconfig get nodes | grep 'control-plane' >/dev/null"
+            test_type="errorlevel"
+            success_message="The Kubernetes API is reachable, proceeding"
+            fail_message="The Kubernetes API is unreachable. Exiting script"
+            ;;
+            
+        verify_node_ready)
+            check_command="! $kubecmd --kubeconfig=$kubeconfig get node $node_name | grep -i -E '(NotReady|Unknown)'"
+            test_type="errorlevel"
+            desired_result="true"
+            success_message="Node $node_name is ready"
+            fail_message="Node $node_name did not become ready in time"
+            ;;
+            
+        verify_controlplane)
+            check_command="! $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(control-plane|etcd|master)' | grep -i -E '(NotReady|Unknown)'"
+            test_type="errorlevel"
+            success_message="All control plane nodes are in a Ready state, proceeding"
+            fail_message="One or more control plane nodes is in a NotReady or Unknown state. Exiting script"
+            ;;
+    
+        cordon|drain|uncordon)
+            check_command="$kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}'"
+            test_type="output"
+    
+            case "$workflow_test" in
+                cordon)
+                    desired_result="true"
+                    success_message="Node $node_name cordoned successfully"
+                    fail_message="Node $node_name did not cordon successfully"
+                    ;;
+                drain)
+                    desired_result="true"
+                    success_message="Node $node_name drained and cordoned successfully"
+                    fail_message="Node $node_name did not drain and cordon successfully"
+                    ;;
+                uncordon)
+                    desired_result=""
+                    success_message="Node $node_name uncordoned successfully"
+                    fail_message="Node $node_name did not uncordon successfully"
+                    ;;
+            esac
+            ;;
+            
+        *)
+            echo "-- Incorrect workflow test '$workflow_test' specified. Exiting script --"
+            exit 1
+            ;;
+    esac
 
     # Default test_success to 0
     test_success="0"
