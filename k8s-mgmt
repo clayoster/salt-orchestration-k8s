@@ -14,6 +14,9 @@ else
     exit 1
 fi
 
+# Define kubectl command in a variable
+kubectl="$kubecmd --kubeconfig=$kubeconfig"
+
 # Display the help text
 show_help() {
 cat <<HELP
@@ -59,7 +62,7 @@ main() {
 
 verify_node_exists() {
     # Verify that the $node_name exists in the cluster
-    if ! $kubecmd --kubeconfig=$kubeconfig get node $node_name >/dev/null; then
+    if ! $kubectl get node $node_name >/dev/null; then
         echo "The node $node_name was not found in the cluster. Exiting script"
         exit 1
     fi
@@ -67,7 +70,7 @@ verify_node_exists() {
 
 cordon_workflow() {
     # Cordon the node
-    $kubecmd --kubeconfig=$kubeconfig cordon $node_name
+    $kubectl cordon $node_name
     sleep 2
 
     # Wait for node to be cordoned
@@ -76,7 +79,7 @@ cordon_workflow() {
 
 drain_workflow() {
     # Drain and cordon the node (drain does both)
-    $kubecmd --kubeconfig=$kubeconfig drain $node_name --ignore-daemonsets --delete-emptydir-data
+    $kubectl drain $node_name --ignore-daemonsets --delete-emptydir-data
     sleep 2
 
     # Wait for node to be cordoned
@@ -88,7 +91,7 @@ uncordon_workflow() {
     check_status "verify_node_ready"
 
     # Uncordon the node
-    $kubecmd --kubeconfig=$kubeconfig uncordon $node_name
+    $kubectl uncordon $node_name
     sleep 2
 
     # Verify the node was uncordoned
@@ -105,14 +108,14 @@ check_status() {
 
     case "$workflow_test" in
         verify_api_connectivity)
-            check_command="$kubecmd --kubeconfig=$kubeconfig get nodes | grep 'control-plane' >/dev/null"
+            check_command="$kubectl get nodes | grep 'control-plane' >/dev/null"
             test_type="errorlevel"
             success_message="The Kubernetes API is reachable, proceeding"
             fail_message="The Kubernetes API is unreachable. Exiting script"
             ;;
             
         verify_node_ready)
-            check_command="! $kubecmd --kubeconfig=$kubeconfig get node $node_name | grep -i -E '(NotReady|Unknown)'"
+            check_command="! $kubectl get node $node_name | grep -i -E '(NotReady|Unknown)'"
             test_type="errorlevel"
             desired_result="true"
             success_message="Node $node_name is ready"
@@ -120,14 +123,14 @@ check_status() {
             ;;
             
         verify_controlplane)
-            check_command="! $kubecmd --kubeconfig=$kubeconfig get nodes | grep -i -E '(control-plane|etcd|master)' | grep -i -E '(NotReady|Unknown)'"
+            check_command="! $kubectl get nodes | grep -i -E '(control-plane|etcd|master)' | grep -i -E '(NotReady|Unknown)'"
             test_type="errorlevel"
             success_message="All control plane nodes are in a Ready state, proceeding"
             fail_message="One or more control plane nodes is in a NotReady or Unknown state. Exiting script"
             ;;
     
         cordon|drain|uncordon)
-            check_command="$kubecmd --kubeconfig=$kubeconfig get node $node_name --output=jsonpath='{.spec.unschedulable}'"
+            check_command="$kubectl get node $node_name --output=jsonpath='{.spec.unschedulable}'"
             test_type="output"
     
             case "$workflow_test" in
