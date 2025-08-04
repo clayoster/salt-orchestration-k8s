@@ -62,7 +62,7 @@ main() {
 
 verify_node_exists() {
     # Verify that the $node_name exists in the cluster
-    if ! $kubectl get node $node_name >/dev/null; then
+    if ! $kubectl get node "$node_name" >/dev/null; then
         echo "The node $node_name was not found in the cluster. Exiting script"
         exit 1
     fi
@@ -70,7 +70,7 @@ verify_node_exists() {
 
 cordon_workflow() {
     # Cordon the node
-    $kubectl cordon $node_name
+    $kubectl cordon "$node_name"
     sleep 2
 
     # Wait for node to be cordoned
@@ -79,7 +79,7 @@ cordon_workflow() {
 
 drain_workflow() {
     # Drain and cordon the node (drain does both)
-    $kubectl drain $node_name --ignore-daemonsets --delete-emptydir-data
+    $kubectl drain "$node_name" --ignore-daemonsets --delete-emptydir-data
     sleep 2
 
     # Wait for node to be cordoned
@@ -91,7 +91,7 @@ uncordon_workflow() {
     check_status "verify_node_ready"
 
     # Uncordon the node
-    $kubectl uncordon $node_name
+    $kubectl uncordon "$node_name"
     sleep 2
 
     # Verify the node was uncordoned
@@ -161,7 +161,7 @@ check_status() {
     # Default test_success to 0
     test_success="0"
 
-    for i in {1..20}; do
+    for _ in {1..20}; do
         #echo "check_command: $check_command"
         if [[ "$test_type" == 'errorlevel' ]]; then
             if eval "$check_command"; then
@@ -172,7 +172,7 @@ check_status() {
         
         elif [[ "$test_type" == 'output' ]]; then
             command_result=""
-            command_result="$(eval $check_command)"
+            command_result="$(eval "$check_command")"
             if [[ "$?" == 0 && "${command_result,,}" == "$desired_result" ]]; then
                 # If the command succeeded and the desired result was achieved, set success to 1 and exit the loop
                 test_success="1"
