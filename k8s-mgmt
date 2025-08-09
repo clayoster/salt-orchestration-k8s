@@ -79,7 +79,11 @@ cordon_workflow() {
 
 drain_workflow() {
     # Drain and cordon the node (drain does both)
-    $kubectl drain "$node_name" --ignore-daemonsets --delete-emptydir-data
+    # Set timeout to 5 minutes - Exit unsuccessfully if this timeout is exceeded
+    if ! $kubectl drain "$node_name" --ignore-daemonsets --delete-emptydir-data --timeout=300s; then
+        echo "-- The drain of $node_name did not complete within 5 minutes. Review output for issues --"
+        exit 1
+    fi
     sleep 2
 
     # Wait for node to be cordoned
