@@ -63,7 +63,7 @@ main() {
 verify_node_exists() {
     # Verify that the $node_name exists in the cluster
     if ! $kubectl get node "$node_name" >/dev/null; then
-        echo "The node $node_name was not found in the cluster. Exiting script"
+        echo "-- The node $node_name was not found in the cluster. Exiting script --"
         exit 1
     fi
 }
