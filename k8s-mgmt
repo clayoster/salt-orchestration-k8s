@@ -90,6 +90,7 @@ precheck_workflow() {
             | select(.metadata.ownerReferences == null)
             | [.kind, .metadata.namespace, .metadata.name, .spec.nodeName] | @tsv')"
     
+    # If $pod_list is empty, print a message and exit successfully. Otherwise, continue with the workflow
     if [[ -z "$pod_list" ]]; then
         echo "-- No pods without controllers were found --"
     else
@@ -99,6 +100,34 @@ precheck_workflow() {
             echo -e "KIND\tNAMESPACE\tNAME\tNODE"
             echo -e "$pod_list"
         } | column -t -s $'\t'
+        echo ""
+
+        # Determine if any of the pods have PVCs that will be left behind
+        while read -r kind namespace name node; do
+            pod_pvc="$($kubectl get pod "$name" -n "$namespace" -o \
+                jsonpath='{range .spec.volumes[*]}{.persistentVolumeClaim.claimName}{"\n"}{end}' | grep -v '^$')"
+
+            # Ensure that $pod_pvc is not empty to avoid adding empty lines to the array
+            if [[ -n "$pod_pvc" ]]; then
+                while read -r pvc; do
+                    pod_pvc_list+=("$pvc")
+                done <<< "$pod_pvc"
+            fi
+        done <<< "$pod_list"
+
+        # If any PVCs were found, display them with a message
+        if [ ${#pod_pvc_list[@]} -gt 0 ]; then
+            echo "-- The following PVCs are attached to the pods shown above --"
+            echo "-- These PVCs will need to be cleaned up manually if the pods are deleted --"
+            {
+                echo -e "NAMESPACE\tNAME\tSTORAGECLASS\tVOLUMENAME"
+                for pvc_name in "${pod_pvc_list[@]}"; do
+                    $kubectl get pvc "$pvc_name" -o json | \
+                        jq -r '. | [.metadata.namespace, .metadata.name, .spec.storageClassName, .spec.volumeName] | @tsv'
+                done
+            } | column -t -s $'\t'
+            echo ""
+        fi
 
         # If 'clean' is specified, delete the pods without controllers
         if [[ "$1" == 'clean' ]]; then
