@@ -25,7 +25,7 @@ Usage: k8s-mgmt [option]
 Options:
   -h    Show this help text
   -n    Set the node to interact with
-  -t    Set the workflow type (cordon | drain | uncordon)
+  -t    Set the workflow type ( precheck | precheck_clean | cordon | drain | uncordon )
 
 HELP
 }
@@ -40,24 +40,90 @@ while getopts "hn:t:" option; do
     esac
 done
 
+# Test input arguments
+if [[ -z "$workflow_type" ]]; then
+    echo "-- A workflow type must be specified with the -t argument. Exiting script --"
+    exit 1
+elif [[ "$workflow_type" =~ (cordon|drain|uncordon) && -z "$node_name" ]]; then
+    echo "-- A node name must be specified with the -n argument for the $workflow_type workflow. Exiting script --"
+    exit 1
+fi
+
+# Confirm jq is installed as functions below depend upon it
+if ! command -v jq &>/dev/null; then
+    echo "-- jq is not installed; Exiting script --"
+    exit 1
+fi
+
 main() {
     # Mandatory checks
     check_status "verify_api_connectivity"
     check_status "verify_controlplane"
-    verify_node_exists
 
     # Execute workflow specified by -t argument
-    if [[ "$workflow_type" == 'cordon' ]]; then
+    if [[ "$workflow_type" == 'precheck' ]]; then
+        precheck_workflow
+    elif [[ "$workflow_type" == 'precheck_clean' ]]; then
+        precheck_workflow clean
+    elif [[ "$workflow_type" == 'cordon' ]]; then
+        verify_node_exists
         cordon_workflow
     elif [[ "$workflow_type" == 'drain' ]]; then
+        verify_node_exists
         drain_workflow
     elif [[ "$workflow_type" == 'uncordon' ]]; then
+        verify_node_exists
         uncordon_workflow
     else
         echo "-- Incorrect workflow type $workflow_type specified. Exiting script --"
         exit 1
     fi
 
+}
+
+precheck_workflow() {
+    # Run the precheck workflow to identify pods without controllers
+    # If 'clean' is passed as the first argument, delete any pods without controllers that are found
+    echo "-- Performing precheck for pods without controllers --"
+    pod_list="$($kubectl get pods --all-namespaces -o json | \
+        jq -r '.items[]
+            | select(.metadata.ownerReferences == null)
+            | [.kind, .metadata.namespace, .metadata.name, .spec.nodeName] | @tsv')"
+    
+    if [[ -z "$pod_list" ]]; then
+        echo "-- No pods without controllers were found --"
+    else
+        echo "-- The following pods without controllers were found --"
+        echo "-- Nodes may fail to drain if these pods are not removed --"
+        {
+            echo -e "KIND\tNAMESPACE\tNAME\tNODE"
+            echo -e "$pod_list"
+        } | column -t -s $'\t'
+
+        # If 'clean' is specified, delete the pods without controllers
+        if [[ "$1" == 'clean' ]]; then
+            echo "-- Removing pods without controllers --"
+            while read -r kind namespace name node; do
+                echo "-- Deleting pod $name in namespace $namespace on node $node --"
+                $kubectl delete pod "$name" -n "$namespace" --grace-period=30 --timeout=1m
+
+                if [[ "$?" != 0 ]]; then
+                    echo "-- The pod $name in namespace $namespace on node $node did not delete successfully --"
+                    pod_delete_error="1"
+                else
+                    echo "-- The pod $name in namespace $namespace on node $node deleted successfully --"
+                fi
+            done <<< "$pod_list"
+            
+            # Check if any pods failed to delete and set an appropriate errorlevel
+            if [[ "$pod_delete_error" == 1 ]]; then
+                echo "-- One or more pods without controllers did not delete successfully. Review output for issues --"
+                exit 1
+            else
+                echo "-- All pods without controllers deleted successfully --"
+            fi
+        fi
+    fi
 }
 
 verify_node_exists() {
