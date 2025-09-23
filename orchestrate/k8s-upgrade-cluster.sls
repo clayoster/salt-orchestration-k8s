@@ -26,6 +26,10 @@
 #   pillar='{"skip_reboot": True}'
 {% set skip_reboot = salt['pillar.get']('skip_reboot', False) %}
 
+# If set to True, the precheck step will delete any pods without controllers that are found
+# If set to False, the precheck step will only report any pods without controllers that are found
+{% set clean_standalone_pods = True %}
+
 # Verify control plane nodes are up. Fail hard if any of these do not respond
 check_controlplane_pings:
   salt.function:
@@ -34,6 +38,23 @@ check_controlplane_pings:
     - tgt_type: list
     - failhard: True
     - expect_minions: True
+
+# Run a precheck to identify any pods without controllers that may cause node drains to fail
+# If "clean_standalone_pods" is set to true, the k8s-mgmt script will delete any pods without controllers that are found
+precheck:
+  salt.function:
+    - name: cmd.run
+    # Target at the first control plane node
+    - tgt: {{ controlplane_nodes[0] }}
+    - arg:
+        {% if clean_standalone_pods %}
+        - /usr/local/sbin/k8s-mgmt -t precheck_clean
+        {% else %}
+        - /usr/local/sbin/k8s-mgmt -t precheck
+        {% endif %}
+    - failhard: True
+    - require:
+      - salt: check_controlplane_pings
 
 # Run the orchestration state for every minion in the upgrade_list. Executed sequentially
 # and beginning with the control plane nodes.
@@ -61,4 +82,5 @@ check_controlplane_pings:
     {% endif %}
     - require:
       - salt: check_controlplane_pings
+      - salt: precheck
 {% endfor %}
