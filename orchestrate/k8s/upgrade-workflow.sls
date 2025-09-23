@@ -31,11 +31,10 @@
 
 # Install all available package updates
 {{ minion }}_upgrade_packages:
-  salt.function:
-    - name: pkg.upgrade
+  salt.state:
     - tgt: {{ minion }}
-    - kwarg:
-        refresh: True
+    - sls:
+      - test-upgrade-workflow-pkgupgrade
     - require:
       - {{ minion }}_k8s_prep_maintenance
 
