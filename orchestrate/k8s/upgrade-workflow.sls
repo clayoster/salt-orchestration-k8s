@@ -34,20 +34,17 @@
   salt.state:
     - tgt: {{ minion }}
     - sls:
-      - test-upgrade-workflow-pkgupgrade
+      - orchestrate.k8s.upgrade-workflow-pkgupgrade
     - require:
       - {{ minion }}_k8s_prep_maintenance
 
 {% if not skip_reboot %}
 # Initiate a reboot
 {{ minion }}_reboot:
-  salt.function:
-    - name: cmd.run
+  salt.state:
     - tgt: {{ minion }}
-    - arg:
-        - 'sleep 3s && reboot'
-    - kwarg:
-        bg: True
+    - sls:
+      - orchestrate.k8s.upgrade-workflow-reboot
     - require:
       - salt: {{ minion }}_upgrade_packages
 
@@ -62,6 +59,20 @@
       - salt: {{ minion }}_reboot
 {% endif %}
 
+# Give the minion a grace period to wait for servcies to start up
+{{ minion }}_k8s_startup_sleep:
+  salt.function:
+    - name: test.sleep
+    - tgt: {{ minion }}
+    - arg:
+        - 10
+    - require:
+      {% if not skip_reboot %}
+      - salt: {{ minion }}_wait_for_online
+      {% else %}
+      - salt: {{ minion }}_upgrade_packages
+      {% endif %}
+
 # Uncordon the node
 {{ minion }}_k8s_prep_startup:
   salt.function:
@@ -70,17 +81,13 @@
     - tgt: {{ controlplane_nodes[0] }}
     # Add a grace period of 10 seconds before uncordoning the node
     - arg:
-        - sleep 10 && /usr/local/sbin/k8s-mgmt -n {{ k8s_node_name }} -t uncordon
+        - /usr/local/sbin/k8s-mgmt -n {{ k8s_node_name }} -t uncordon
     {% if minion in controlplane_nodes %}
     # If the minion is a control plane node, fail hard if this state is not successful
     - failhard: True
     {% endif %}
     - require:
-      {% if not skip_reboot %}
-      - salt: {{ minion }}_wait_for_online
-      {% else %}
-      - salt: {{ minion }}_upgrade_packages
-      {% endif %}
+      - {{ minion }}_k8s_startup_sleep
 
 # Wait for the node to settle before moving on
 {{ minion }}_wait:
