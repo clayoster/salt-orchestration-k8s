@@ -28,7 +28,7 @@
 
 # If set to True, the precheck step will delete any pods without controllers that are found
 # If set to False, the precheck step will only report any pods without controllers that are found
-{% set clean_standalone_pods = True %}
+{% set clean_standalone_pods = False %}
 
 # Verify control plane nodes are up. Fail hard if any of these do not respond
 check_controlplane_pings:
