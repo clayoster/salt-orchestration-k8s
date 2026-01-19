@@ -20,14 +20,38 @@ kubectl="$kubecmd --kubeconfig=$kubeconfig"
 # Display the help text
 show_help() {
 cat <<HELP
-Usage: k8s-mgmt [option]
+Usage: k8s-mgmt [options] -t <workflow type>
 
 Options:
   -h    Show this help text
-  -n    Set the node to interact with
+  -n    Set the node name to interact with (required for cordon, drain, and uncordon workflows)
   -t    Set the workflow type ( precheck | precheck_clean | cordon | drain | uncordon )
 
+Workflow Descriptions:
+  precheck          Find pods without controllers and list attached PVCs
+  precheck_clean    Find **and delete** pods without controllers and list attached PVCs
+  cordon            Make a node unschedulable
+  drain             Evict pods and cordon a node
+  uncordon          Confirm a node is ready and make it schedulable
+
+Examples:
+  Perform a precheck for pods without controllers:
+    k8s-mgmt -t precheck
+
+  Perform a precheck for pods without controllers and delete them:
+    k8s-mgmt -t precheck_clean
+
+  Cordon a node named worker-node-1:
+    k8s-mgmt -t cordon -n worker-node-1
+
+  Drain a node named worker-node-1:
+    k8s-mgmt -t drain -n worker-node-1
+
+  Uncordon a node named worker-node-1:
+    k8s-mgmt -t uncordon -n worker-node-1
+
 HELP
+exit 0
 }
 
 # Read in arguments to set API options
