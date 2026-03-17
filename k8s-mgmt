@@ -17,6 +17,10 @@ fi
 # Define kubectl command in a variable
 kubectl="$kubecmd --kubeconfig=$kubeconfig"
 
+# User-Controllable Variables
+# Time in minutes to wait for the drain workflow to complete before exiting with an error. (Default is 5 minutes)
+drain_timeout="5"
+
 # Display the help text
 show_help() {
 cat <<HELP
@@ -198,9 +202,9 @@ cordon_workflow() {
 
 drain_workflow() {
     # Drain and cordon the node (drain does both)
-    # Set timeout to 5 minutes - Exit unsuccessfully if this timeout is exceeded
-    if ! $kubectl drain "$node_name" --ignore-daemonsets --delete-emptydir-data --timeout=300s; then
-        echo "-- The drain of $node_name did not complete within 5 minutes. Review output for issues --"
+    # Set timeout to $drain_timeout minutes (Default 5) - Exit unsuccessfully if this timeout is exceeded
+    if ! $kubectl drain "$node_name" --ignore-daemonsets --delete-emptydir-data --timeout=$((drain_timeout * 60))s; then
+        echo "-- The drain of $node_name did not complete within $drain_timeout minutes. Review output for issues --"
         exit 1
     fi
     sleep 2

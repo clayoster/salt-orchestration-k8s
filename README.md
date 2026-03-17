@@ -17,11 +17,15 @@ These options can be adjusted in the `orchestrate/k8s-upgrade-cluster.sls` file
     - If your minion names and k8s node names match, leave this set to `True`. If your k8s node names are the plain hostname and the minion names are fqdn, set to `False`
   - skip_reboot
      - If you do not want to reboot each node after updates are applied, append this to the orchestration command
-       - `pillar='{"skip_reboot": True}`
+       - `pillar='{"skip_reboot": True}'`
   - clean_standalone_pods
     - If set to `True`, the precheck step will delete any pods without controllers that are found
       - These tend to cause issues with draining worker nodes as there is no controller to assist in scheduling on another node.
     - If set to `False`, the precheck step will only report any pods without controllers that are found
+
+This variable can be adjusted in the `k8s-mgmt` script:
+  - drain_timeout
+    - This option will control the amount of time that the **drain** workflow will wait for a node to drain before it times out and fails. (Default is `5` minutes)
 
 ## To Run
 
@@ -47,6 +51,7 @@ If any of these steps fail for a control plane node, the entire orchestration wi
 1. Check that the node responds to `test.ping`
 2. Cordon and drain the node
     * The `--ignore-daemonsets` and `--delete-emptydir-data` options are used and the drain will timeout after 5 minutes
+    * The drain timeout is user-controllable, see the [Options](#Options) section
 3. Run `pkg.upgrade` state module to apply all available updates
     * If the server is based on Debian, it will also add `dist_upgrade=True`)
 4. Reboot the node (If skip_reboot is not True)
