@@ -13,15 +13,15 @@ Fill in the lists named `control_plane` and `worker_nodes` with the names of you
 
 ### Options
 These options can be adjusted in the `orchestrate/k8s-upgrade-cluster.sls` file
- - minion_k8s_names_match
-   - If your minion names and k8s node names match, leave this set to `True`. If your k8s node names are the plain hostname and the minion names are fqdn, set to `False`
- - skip_reboot
-    - If you do not want to reboot each node after updates are applied, append this to the orchestration command
-      - `pillar='{"skip_reboot": True}`
- - clean_standalone_pods
-   - If set to `True`, the precheck step will delete any pods without controllers that are found
-     - These tend to cause issues with draining worker nodes as there is no controller to assist in scheduling on another node.
-   - If set to `False`, the precheck step will only report any pods without controllers that are found
+  - minion_k8s_names_match
+    - If your minion names and k8s node names match, leave this set to `True`. If your k8s node names are the plain hostname and the minion names are fqdn, set to `False`
+  - skip_reboot
+     - If you do not want to reboot each node after updates are applied, append this to the orchestration command
+       - `pillar='{"skip_reboot": True}`
+  - clean_standalone_pods
+    - If set to `True`, the precheck step will delete any pods without controllers that are found
+      - These tend to cause issues with draining worker nodes as there is no controller to assist in scheduling on another node.
+    - If set to `False`, the precheck step will only report any pods without controllers that are found
 
 ## To Run
 
